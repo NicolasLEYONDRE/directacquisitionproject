@@ -1,0 +1,311 @@
+---
+title: "LDBclassyfire"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+We load the necessary packages
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+library(tidyverse)
+library(classyfireR)
+library(rcdk)
+library(tcltk)
+library(dplyr)
+```
+
+We read the input file and remove molecules without structure
+```{r,message=FALSE, warning=FALSE}
+raw_path <- "./DataBases/DB_triDatabase.tsv"
+raw <- read_tsv(raw_path)
+# Clean
+na_list <- which(is.na(raw$InChIKey))
+raw <- raw[-na_list,]
+```
+
+Generate molecular formulae from the SMILES
+```{r, message=FALSE, warning=FALSE}
+sp <- get.smiles.parser()
+pb <- tkProgressBar(title = "progress bar", min = 0, max = nrow(raw))
+
+for (i in 1:nrow(raw)){
+molecule <- parse.smiles(raw$SMILES[i])[[1]]
+convert.implicit.to.explicit(molecule)
+formula <- get.mol2formula(molecule,charge=0)
+raw[i,'Formula']=formula@string
+
+setTkProgressBar(pb, i, label=paste( round(i/nrow(raw)*100, 0), "% done"))
+}
+
+close(pb)
+```
+
+We split the Molecular Formulae to get the elements, then we calculate the VK coordinates
+```{r, warning=FALSE}
+pb <- tkProgressBar(title = "progress bar", min = 0, max = nrow(raw))
+
+for (i in 1:nrow(raw)){
+
+form = raw$Formula[i]
+ups = c(gregexpr("[[:upper:]]", form)[[1]], nchar(form) + 1)
+separated = sapply(1:(length(ups)-1), function(x) substr(form, ups[x], ups[x+1] - 1))
+elements =  gsub("[[:digit:]]", "", separated)
+nums = gsub("[[:alpha:]]", "", separated)
+ans = data.frame(element = as.character(elements),
+num = as.numeric(ifelse(nums == "", 1, nums)), stringsAsFactors = FALSE)
+
+raw[i,ans$element]=ans$num
+raw[is.na(raw)]=0
+
+raw[i,'H_C'] = raw[i,'H']/raw[i,'C']
+raw[i,'O_C'] = raw[i,'O']/raw[i,'C']
+
+rm(ans)
+setTkProgressBar(pb, i, label=paste( round(i/nrow(raw)*100, 0), "% done"))
+}
+
+close(pb)
+```
+
+We submit the whole MS1-LDB to ClassyFire
+```{r, message=F, warning=F}
+pb <- tkProgressBar(title = "progress bar", min = 0, max = nrow(raw))
+
+for (i in 1:nrow(raw)){
+  a <- get_classification(raw$InChIKey[i])
+  if(is.null(a)==T) {raw$cf_status[i] = "failed"}
+  if(is.null(a)==F) {raw$cf_status[i] = "done"}
+  raw[i, a$Level] = a$Classification
+  setTkProgressBar(pb, i, label=paste( round(i/nrow(raw)*100, 0), "% done"))
+  Sys.sleep(5)
+}
+
+close(pb)
+
+x = which(raw$cf_status=="failed")
+fail_list <- raw$X1[x]
+
+print(paste(length(x), "molecules could not be classified", sep=" "))
+
+```
+
+
+```{r}
+pb <- tkProgressBar(title = "progress bar", min = 0, max = nrow(raw))
+
+for(i in (1:nrow(raw))){
+  HC = as.numeric(raw[i,"H_C"])
+  OC = as.numeric(raw[i,"O_C"])
+  
+  ## Correlates index w/ chemical family (rectangles approx.)
+  
+  ### Unsaturated hydrocarbons
+  if((between(HC,0.85,1.5)==TRUE)&(between(OC,0,0.1)==TRUE)) raw[i,"classif_VK"] = "Unsaturated hydrocarbons"
+  
+  ### Condensed aromatic compounds
+  if((between(OC,0,0.65)==TRUE)&(between(HC,0,0.65)==TRUE)) raw[i,"classif_VK"] = "Condensed aromatic compounds"
+  if((between(OC,0,0.5)==TRUE)&(between(HC,0,0.7)==TRUE)) raw[i,"classif_VK"] = "Condensed aromatic compounds"
+  if((between(OC,0,0.45)==TRUE)&(between(HC,0,0.75)==TRUE)) raw[i,"classif_VK"] = "Condensed aromatic compounds"
+  if((between(OC,0,0.4)==TRUE)&(between(HC,0,0.85)==TRUE)) raw[i,"classif_VK"] = "Condensed aromatic compounds"
+  
+  ### (Poly)phenolic compounds
+  if((between(HC,0.65,0.75)==TRUE)&(between(OC,0.45,0.8)==TRUE)) raw[i,"classif_VK"] = "Phenolic compounds"
+  if((between(HC,0.75,0.85)==TRUE)&(between(OC,0.4,0.85)==TRUE)) raw[i,"classif_VK"] = "Phenolic compounds"
+  if((between(HC,0.85,1.0)==TRUE)&(between(OC,0.35,0.9)==TRUE)) raw[i,"classif_VK"] = "Phenolic compounds"
+  if((between(HC,1.0,1.15)==TRUE)&(between(OC,0.385,0.9)==TRUE)) raw[i,"classif_VK"] = "Phenolic compounds"
+  if((between(HC,1.15,1.30)==TRUE)&(between(OC,0.385,0.85)==TRUE)) raw[i,"classif_VK"] = "Phenolic compounds"
+
+  ### Terpenoids
+  if((between(HC,0.85,1.0)==TRUE)&(between(OC,0.225,0.35)==TRUE)) raw[i,"classif_VK"] = "Benzenoids or atypic terpenoids"
+  if((between(HC,1.0,1.15)==TRUE)&(between(OC,0.20,0.385)==TRUE)) raw[i,"classif_VK"] = "Benzenoids or atypic terpenoids"
+  if((between(HC,1.15,1.5)==TRUE)&(between(OC,0.20,0.4)==TRUE)) raw[i,"classif_VK"] = "Benzenoids or atypic terpenoids"
+  if((between(HC,1.5,1.6)==TRUE)&(between(OC,0.225,0.395)==TRUE)) raw[i,"classif_VK"] = "Benzenoids or atypic terpenoids"
+  if((between(HC,1.6,1.75)==TRUE)&(between(OC,0.25,0.385)==TRUE)) raw[i,"classif_VK"] = "Benzenoids or atypic terpenoids"
+
+  ### Nucleic acids
+  if((between(HC,1.30,1.50)==TRUE)&(between(OC,0.40,1.05)==TRUE)) raw[i,"classif_VK"] = "Nucleic acids"
+  if((between(HC,1.50,1.60)==TRUE)&(between(OC,0.60,0.90)==TRUE)) raw[i,"classif_VK"] = "Nucleic acids"
+
+  ### Steroids
+  if((between(HC,1.50,2.00)==TRUE)&(between(OC,0,0.10)==TRUE)) raw[i,"classif_VK"] = "Terpenoids"
+
+  ## Fatty acids
+  if((between(HC,1.75,2.00)==TRUE)&(between(OC,0.1,0.4)==TRUE)) raw[i,"classif_VK"] = "Fatty acyls"
+  if((between(HC,2.00,2.30)==TRUE)&(between(OC,0,0.4)==TRUE)) raw[i,"classif_VK"] = "Fatty acyls"
+
+  ## Small acids
+  if((between(HC,1.5,1.6)==TRUE)&(between(OC,0.1,0.225)==TRUE)) raw[i,"classif_VK"] = "Prenol derivatives"
+  if((between(HC,1.6,1.85)==TRUE)&(between(OC,0.1,0.25)==TRUE)) raw[i,"classif_VK"] = "Prenol derivatives"
+
+  ## Amino acids
+  if((between(HC,1.5,1.6)==TRUE)&(between(OC,0.395,0.60)==TRUE)) raw[i,"classif_VK"] = "Amino acids"
+  if((between(HC,1.6,1.75)==TRUE)&(between(OC,0.385,0.70)==TRUE)) raw[i,"classif_VK"] = "Amino acids"
+  if((between(HC,1.75,1.9)==TRUE)&(between(OC,0.32,0.82)==TRUE)) raw[i,"classif_VK"] = "Amino acids"
+  if((between(HC,1.9,2.6)==TRUE)&(between(OC,0.35,0.82)==TRUE)) raw[i,"classif_VK"] = "Amino acids"
+
+  ## Carbohydrates
+  if((between(HC,1.50,1.60)==TRUE)&(between(OC,0.90,1.20)==TRUE)) raw[i,"classif_VK"] = "Carbohydrates"
+  if((between(HC,1.60,2.50)==TRUE)&(between(OC,0.82,1.20)==TRUE)) raw[i,"classif_VK"] = "Carbohydrates"
+
+  setTkProgressBar(pb, i, label=paste( round(i/nrow(raw)*100, 0), "% done"))
+}
+raw[is.na(raw)]="Unknown"
+close(pb)
+```
+
+
+```{r}
+write_tsv(raw, "./LDB_classyfired.tsv")
+# write(fail_list, "./unclassified.txt", sep=" ")
+```
+
+```{r}
+pb <- tkProgressBar(title = "progress bar", min = 0, max = nrow(raw))
+
+for(i in (1:nrow(raw))){
+  
+  if(raw$subclass[i]=="Amino acids, peptides, and analogues" & (raw$classif_VK[i]=="Amino acids"|raw$classif_VK[i]=="Nucleic acids")) raw[i,"corresp_classif"]="YES"
+  
+  if(raw$subclass[i]=="Carbohydrates and carbohydrate conjugates" & (raw$classif_VK[i]=="Carbohydrates")) raw[i,"corresp_classif"]="YES"
+  
+  if(raw$class[i]=="Prenol lipids" & (raw$classif_VK[i]=="Terpenoids"|raw$classif_VK[i]=="Prenol derivatives"|raw$classif_VK[i]=="Unsaturated hydrocarbons")) raw[i,"corresp_classif"]="YES"
+  
+  if(raw$class[i]=="Fatty Acyls" & (raw$classif_VK[i]=="Fatty acyls"|raw$classif_VK[i]=="Prenol derivatives")) raw[i,"corresp_classif"]="YES"
+  
+  if(raw$class[i]=="Depsides and depsidones" & (raw$classif_VK[i]=="Phenolic compounds"|raw$classif_VK[i]=="Benzenoids or atypic terpenoids")) raw[i,"corresp_classif"]="YES"  
+  
+  if(raw$class[i]=="Benzene and substituted derivatives" & (raw$classif_VK[i]=="Phenolic compounds"|raw$classif_VK[i]=="Benzenoids or atypic terpenoids")) raw[i,"corresp_classif"]="YES" 
+  
+  if(raw$'level 7'[i]=="Xanthones" & (raw$classif_VK[i]=="Condensed aromatic compounds")) raw[i,"corresp_classif"]="YES"  
+  
+  if(raw$subclass[i]=="Anthraquinones" & (raw$classif_VK[i]=="Condensed aromatic compounds")) raw[i,"corresp_classif"]="YES"
+  
+  if(raw$subclass[i]=="Dibenzofurans" & (raw$classif_VK[i]=="Condensed aromatic compounds"|raw$classif_VK[i]=="Benzenoids or atypic terpenoids")) raw[i,"corresp_classif"]="YES"
+  
+  if(raw$'level 5'[i]=="Chromones" & (raw$classif_VK[i]=="Phenolic compounds"|raw$classif_VK[i]=="Benzenoids or atypic terpenoids")) raw[i,"corresp_classif"]="YES"  
+    
+    setTkProgressBar(pb, i, label=paste( round(i/nrow(raw)*100, 0), "% done"))
+}
+
+# Amino Acids
+a = round(length(which(raw$subclass=="Amino acids, peptides, and analogues"&raw$corresp_classif=="YES"))/length(which(raw$subclass=="Amino acids, peptides, and analogues"))*100,1)
+
+# Sugars
+b = round(length(which(raw$subclass=="Carbohydrates and carbohydrate conjugates"&raw$corresp_classif=="YES"))/length(which(raw$subclass=="Carbohydrates and carbohydrate conjugates"))*100,1)
+
+# Prenol lipids (including terpenoids)
+c = round(length(which(raw$class=="Prenol lipids"&raw$corresp_classif=="YES"))/length(which(raw$class=="Prenol lipids"))*100,1)
+
+# Fatty acyls
+d = round(length(which(raw$class=="Fatty Acyls"&raw$corresp_classif=="YES"))/length(which(raw$class=="Fatty Acyls"))*100,1)
+
+# Depsides and depsidones
+e = round(length(which(raw$class=="Depsides and depsidones"&raw$corresp_classif=="YES"))/length(which(raw$class=="Depsides and depsidones"))*100,1)
+
+# Benzenoids
+f = round(length(which(raw$class=="Benzene and substituted derivatives"&raw$corresp_classif=="YES"))/length(which(raw$class=="Benzene and substituted derivatives"))*100,1)
+
+# Xanthones
+g = round(length(which(raw$'level 7'=="Xanthones"&raw$corresp_classif=="YES"))/length(which(raw$'level 7'=="Xanthones"))*100,1)
+
+# Anthraquinones
+h = round(length(which(raw$subclass=="Anthraquinones"&raw$corresp_classif=="YES"))/length(which(raw$subclass=="Anthraquinones"))*100,1)
+
+# DBF
+i = round(length(which(raw$subclass=="Dibenzofurans"&raw$corresp_classif=="YES"))/length(which(raw$subclass=="Dibenzofurans"))*100,1)   
+
+# Chromones
+j = round(length(which(raw$'level 5'=="Chromones"&raw$corresp_classif=="YES"))/length(which(raw$'level 5'=="Chromones"))*100,1)
+
+close(pb)
+```
+
+```{r}
+library(plotly)
+
+x = c("A.A. and analogues", "Carbohydrates and conjugates", "Prenol lipids (e.g. terpenes)", "Fatty acyls", "Depsides and depsidones", "Benzene derivatives", "Xanthones", "Anthraquinones", "Dibenzofurans", "Chromones")
+y = c(a,b,c,d,e,f,g,h,i,j) %>% as.character
+
+# Fonts for the titles
+t <- list(
+  family = "Helvetica",
+  size = 14,
+  color = '#34495E')
+
+t2 <- list(
+  family = "Helvetica",
+  size = 18,
+  color = '#1f78b4')
+
+plot_ly(x=x, y=y
+        , histfunc='sum'
+        , type="histogram"
+        )%>%
+  layout(font = t
+         , title = sprintf("<b>%s</b>","Comparison to ClassyFire annotations"), titlefont=t2
+         , colorway = c('#8447f5')
+         , yaxis=list(type='linear'
+                      , showgrid = TRUE
+                      , title=sprintf("<b>%s</b>","Proportion of molecules\n correctly classified")
+                      , titlefont = t
+                      , showticklabels=F
+                      )
+         , xaxis=list(showticklabels=F)
+         , plot_bgcolor = '#e4eaf7'
+         # , test=1
+         )%>%
+
+add_annotations(text = sprintf("<b>%s</b>",paste(as.character(y),'%', sep = ''))
+                , y = as.numeric(y)+5
+                , showarrow = FALSE
+                , textposition = "top left"
+                , textangle = 0
+                , font = list(
+                  family = "Helvetica",
+                  size = 14,
+                  color = '#8447f5')
+                )%>%
+  
+add_annotations(text=sprintf("<b><i>%s</i></b>", c("Amino Acids \n and analogues", "Carbohydrates \n and conjugates", "Prenol lipids (e.g. terpenes)", "Fatty acyls", "Depsides and depsidones", "Benzene derivatives", "Xanthones", "Anthraquinones", "Dibenzofurans", "Chromones"))
+                , y = as.numeric(y)/2
+                , showarrow = FALSE
+                , textposition = "top left"
+                , textangle = -90
+                , font = list(
+                  family = "Helvetica",
+                  size = 12,
+                  color = '#e4eaf7')
+                )
+```
+
+
+
+
+
+```{r}
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$class))
+# unique(raw$superclass)
+# unique(raw$class)
+# unique(raw$subclass)
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$subclass=="Amino acids, peptides, and analogues"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$subclass=="Carbohydrates and carbohydrate conjugates"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$class=="Benzene and substituted derivatives"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$class=="Fatty Acyls"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$class=="Prenol lipids"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$class=="Depsides and depsidones"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$'level 7'=="Xanthones"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$subclass=="Anthraquinones"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$subclass=="Dibenzofurans"))
+# plot(raw$O_C, raw$H_C, col=as.factor(raw$'level 5'=="Chromones"))
+
+```
+
+```{r}
+
+```
+
+
+
