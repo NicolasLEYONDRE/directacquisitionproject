@@ -1,0 +1,163 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(dplyr)
+library(eulerr)
+library(plotly)
+library(readr)
+library(viridis)
+library(tidyverse)
+library(classyfireR)
+library(rcdk)
+library(tcltk)
+# library(ggmosaic)
+# library(RColorBrewer)
+library(htmlwidgets)
+```
+
+
+```{r}
+# LDB<- read_tsv("./DataBases/LDB_classyfired_PCactivated.tsv")
+Set<-read_tsv("./new_figures/dataset_pre-extract_comp_publi2.tsv")
+Set_ASAP<-filter(Set, Ionisation=='ASAP')
+Set_DART<-filter(Set, Ionisation=='DART')
+Set_ESI<-filter(Set, Ionisation=='ESI')
+NOT_ESI <- filter(Set, Ionisation != 'ESI')
+```
+
+
+```{r}
+# for (i in 1:nrow(LDB)){
+# molecule <- parse.smiles(LDB$SMILES[i])[[1]]
+# convert.implicit.to.explicit(molecule)
+# formula <- get.mol2formula(molecule,charge=0)
+# LDB[i,'em']=formula@mass
+# 
+# }
+```
+
+
+```{r}
+density3 <- density(Set_ASAP$em)
+density4 <- density(Set_DART$em)
+density1<-density(Set_ESI$em)
+density2<-density(NOT_ESI$em)
+```
+
+```{r}
+l <- list(
+  font = list(
+    family = "Helvetica",
+    size = 24,
+    color = '#000000',
+    bgcolor = "#34495E",
+    bordercolor = "#34495E",
+    borderwidth = 2))
+l2 <- list(
+  font = list(
+    family = "Helvetica",
+    size = 32,
+    color = '#000000',
+    bgcolor = "#34495E",
+    bordercolor = "#34495E",
+    borderwidth = 2),
+  x = 51,
+  y = 0.85)
+f <- list(
+  family = "Helvetica",
+  size = 18,
+  color = '#000000')
+w <- list(
+  family = "Helvetica",
+  size = 24,
+  color = '#FFFFFF')
+f2 <- list(
+  family = "Helvetica",
+  weight = "bold",
+  size = 28,
+  color = '#000000')
+m <- list(
+  l = 0,
+  r = 0,
+  b = 0,
+  t = 0,
+  pad = 10
+)
+```
+
+
+```{r}
+dens_plot <- plot_ly(
+  x = ~density1$x,
+  y = ~density1$y,
+  type = 'scatter', 
+  mode = 'lines',
+  name = 'ESI', 
+  line = list(
+    width = 2,
+    color = 'rgb(33, 144, 140)')
+  )%>%
+add_trace(
+  opacity = 1,
+  x = ~density2$x,
+  y = ~density2$y,
+  name = 'ASAP+DART', 
+    line = list(
+    # dash = "dash",
+    width = 2,
+    color = 'rgb(255, 0, 0)')
+  )%>%
+  add_trace(
+  opacity = 0.5,
+  x = ~density3$x,
+  y = ~density3$y,
+  name = 'ASAP', 
+    line = list(
+    dash = "dash",
+    width = 2,
+    color = 'rgb(153, 0, 153)')
+  )%>%
+  add_trace(
+  opacity = 0.5,
+  x = ~density4$x,
+  y = ~density4$y,
+  name = 'DART', 
+    line = list(
+    dash = "dash",
+    width = 2,
+    color = 'rgb(0, 0, 102)')
+  )%>%
+layout(
+      autosize = TRUE,
+    # width = 800, 
+    # height = 600,
+  xaxis = list(
+    nticks = 20,
+    range = c(0,1500),
+    title = 'Accurate Mass [Da]',
+    showgrid = T, 
+    zeroline = F, 
+    automargin = TRUE,
+    showticklabels = TRUE,
+    titlefont = f2, 
+    tickfont = f
+    ),
+    yaxis = list(
+      title = "Density",
+      showgrid = T,
+      showline = F,
+      zeroline = F,
+      automargin = TRUE,
+      showticklabels = TRUE,
+      titlefont = f2, 
+      tickfont = f),
+  legend = list(font=f, x = 1, y = 1)
+  )
+dens_plot
+```
+
+

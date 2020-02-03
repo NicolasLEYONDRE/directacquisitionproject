@@ -1,0 +1,136 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(dplyr)
+library(eulerr)
+library(plotly)
+library(readr)
+library(viridis)
+library(tidyverse)
+library(classyfireR)
+library(rcdk)
+library(tcltk)
+# library(ggmosaic)
+# library(RColorBrewer)
+library(htmlwidgets)
+```
+
+
+```{r}
+LDB<- read_tsv("./DataBases/LDB_classyfired_PCactivated.tsv")
+Set<-read_tsv("./new_figures/dataset_solvents_comp_publi1.tsv")
+```
+
+
+```{r}
+for (i in 1:nrow(LDB)){
+molecule <- parse.smiles(LDB$SMILES[i])[[1]]
+convert.implicit.to.explicit(molecule)
+formula <- get.mol2formula(molecule,charge=0)
+LDB[i,'em']=formula@mass
+
+}
+```
+
+
+```{r}
+density1 <- density(LDB$em)
+density2 <- density(Set$em)
+```
+
+```{r}
+l <- list(
+  font = list(
+    family = "Helvetica",
+    size = 24,
+    color = '#000000',
+    bgcolor = "#34495E",
+    bordercolor = "#34495E",
+    borderwidth = 2))
+l2 <- list(
+  font = list(
+    family = "Helvetica",
+    size = 32,
+    color = '#000000',
+    bgcolor = "#34495E",
+    bordercolor = "#34495E",
+    borderwidth = 2),
+  x = 51,
+  y = 0.85)
+f <- list(
+  family = "Helvetica",
+  size = 18,
+  color = '#000000')
+w <- list(
+  family = "Helvetica",
+  size = 24,
+  color = '#FFFFFF')
+f2 <- list(
+  family = "Helvetica",
+  weight = "bold",
+  size = 28,
+  color = '#000000')
+m <- list(
+  l = 0,
+  r = 0,
+  b = 0,
+  t = 0,
+  pad = 10
+)
+```
+
+
+```{r}
+dens_plot <- plot_ly(
+  x = ~density1$x,
+  y = ~density1$y,
+  type = 'scatter', 
+  mode = 'lines',
+  name = 'LDB-MS1', 
+  line = list(
+    width = 2,
+    color = 'rgb(68, 1, 84)')
+  )%>%
+add_trace(
+  opacity = 0.5,
+  x = ~density2$x,
+  y = ~density2$y,
+  name = 'Experimental \n Data', 
+    line = list(
+    dash = "dash",
+    width = 2,
+    color = 'rgb(33, 144, 140)')
+  )%>%
+layout(
+      autosize = TRUE,
+    # width = 800, 
+    # height = 600,
+  xaxis = list(
+    nticks = 20,
+    range = c(0,2000),
+    title = 'Accurate Mass [Da]',
+    showgrid = T, 
+    zeroline = F, 
+    automargin = TRUE,
+    showticklabels = TRUE,
+    titlefont = f2, 
+    tickfont = f
+    ),
+    yaxis = list(
+      title = "Density",
+      showgrid = T,
+      showline = F,
+      zeroline = F,
+      automargin = TRUE,
+      showticklabels = TRUE,
+      titlefont = f2, 
+      tickfont = f),
+  legend = list(font=f, x = 1, y = 1)
+  )
+dens_plot
+```
+
