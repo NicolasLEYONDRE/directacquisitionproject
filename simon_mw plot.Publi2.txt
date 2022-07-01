@@ -1,0 +1,244 @@
+# German repository
+# Cran / bioconductor
+library(Rdisop)
+library(data.table)
+library(dplyr)
+library(eulerr)
+library(plotly)
+library(readr)
+library(viridis)
+library(tidyverse)
+library(classyfireR)
+library(rcdk)
+library(tcltk)
+# library(ggmosaic)
+# library(RColorBrewer)
+library(htmlwidgets)
+library(orca)
+
+# Damian's Database
+#LDB<- read_tsv("C:/Users/CRMPO/Documents/2022/Simon.rapport.DATA/VK/TSV/LDB_classyfired_PCactivated.tsv")
+ LDB<-("C:/Users/CRMPO/Documents/2022/Simon.rapport.DATA/VK/TSV/LDB_classyfired_PCactivated.tsv")
+Set.LDB <-read.csv2(file = LDB, header = TRUE, sep ="\t")
+# Publi2 data
+input_dir <- 'C:/Users/CRMPO/Documents/2022/Simon.rapport.DATA/VK/TSV'
+setwd(input_dir)
+#temp <- list.files(input_dir, pattern = "dataset_solvents_comp_publi1.tsv
+#Set.Publi1  <- read.csv2(file = temp, header = TRUE, sep ="\t")
+temp2 <- list.files(input_dir, pattern = "dataset_pre-extract_comp_publi2.tsv")
+Set.Publi2 <-read.csv2(file = temp2, header = TRUE, sep ="\t")
+#Database Damian
+#from FB to exact mass
+
+# nicolas 26/05/22
+for (i in 1:nrow(Set.LDB)){
+molecule <- Set.LDB$Formula[i]
+Mol.ALL <- getMolecule(molecule)
+formula <- getMass(Mol.ALL)
+Set.LDB[i,'em']=formula
+}
+
+#ASAP+DART (Raw material - Thalle and Grind powder)
+Set.Publi2.AsapDart <- subset(Set.Publi2, (Nature=="Broyat")|(Nature=="Thalle"))
+Set.Publi2.AsapDart$Eml <- 0.0000
+Set.Publi2.AsapDart$Eml <- as.numeric(Set.Publi2.AsapDart$EM)
+#ASAP (Raw material - Grind powder ???)
+Set.Publi2.Asap <- subset(Set.Publi2, (Nature=="Broyat"))
+Set.Publi2.Asap$Eml <- 0.0000
+Set.Publi2.Asap$Eml <- as.numeric(Set.Publi2.Asap$EM)
+#DART (Raw material - Thalle)
+Set.Publi2.Dart <- subset(Set.Publi2, (Nature=="Thalle"))
+Set.Publi2.Dart$Eml <- 0.0000
+Set.Publi2.Dart$Eml <- as.numeric(Set.Publi2.Dart$EM)
+#DI-ESI-MS on extracts in Methanol
+Set.Publi2.DiEsi <- subset(Set.Publi2, (Ionisation=="ESI"))
+Set.Publi2.DiEsi$Eml <- 0.0000
+Set.Publi2.DiEsi$Eml <- as.numeric(Set.Publi2.DiEsi$EM)
+
+# generation of density
+density1 <- density(Set.Publi2.AsapDart$Eml)
+density2 <- density(Set.Publi2.Asap$Eml)
+density3 <- density(Set.Publi2.Dart$Eml)
+density4 <- density(Set.Publi2.DiEsi$Eml)
+density5 <- density(Set.LDB$"em")
+
+#modification here : size in output for text from 18 to 24
+
+l <- list(
+  font = list(
+    family = "Helvetica",
+    size = 24,
+    color = '#000000',
+    bgcolor = "#34495E",
+    bordercolor = "#34495E",
+    borderwidth = 2))
+l2 <- list(
+  font = list(
+    family = "Helvetica",
+    size = 32,
+    color = '#000000',
+    bgcolor = "#34495E",
+    bordercolor = "#34495E",
+    borderwidth = 2),
+  x = 51,
+  y = 0.85)
+f <- list(
+  family = "Helvetica",
+  #size = 18,
+  size = 24,
+  color = '#000000')
+w <- list(
+  family = "Helvetica",
+  size = 24,
+  color = '#FFFFFF')
+f2 <- list(
+  family = "Helvetica",
+  weight = "bold",
+  size = 28,
+  color = '#000000')
+m <- list(
+  l = 0,
+  r = 0,
+  b = 0,
+  t = 0,
+  pad = 10
+)
+
+  # density plot new
+#ASAP+DART in Violet
+dens_plot_new <- plot_ly(
+  x = ~density1$x,
+  y = ~density1$y,
+  type = 'scatter', 
+  mode = 'lines',
+  name = 'ASAP+DART \n (Raw lichens)', 
+  line = list(
+    width = 3,
+    color = '#9933CC')
+  )%>%
+#ASAP in Red
+add_trace(
+  opacity = 1,
+  x = ~density2$x,
+  y = ~density2$y,
+  name = 'ASAP \n (Raw lichens)', 
+    line = list(
+    dash = "dash",
+    width = 2,
+    color = '#CC0000')
+  )%>%
+ #DART in BLUE
+  add_trace(
+  opacity = 1,
+  x = ~density3$x,
+  y = ~density3$y,
+  name = 'DART \n (Raw lichens)', 
+    line = list(
+    dash = "dash",
+    width = 2,
+    color = '#0000FF')
+  )%>%
+  #DI-ESI-MS in ORANGE
+   add_trace(
+  opacity = 0.5,
+  x = ~density4$x,
+  y = ~density4$y,
+  name = 'DI-ESI-MS (Methanol)\n(Extracts)', 
+  line = list(
+    width = 3,
+    color = '#FF3300')
+  )%>%
+    #Lichen Database in GREEN
+   add_trace(
+  opacity = 0.5,
+  x = ~density5$x,
+  y = ~density5$y,
+  name = 'LDB-Lit', 
+    line = list(
+    width = 3,
+    color = '#006600')
+  )%>%
+ layout(
+ #modification with warning but the deprecated protocol can work and specified sizes are shown and saved.
+      #autosize = TRUE,
+     width = 1120, 
+     height = 720,
+  xaxis = list(
+    nticks = 20,
+    range = c(0,1400),
+    title = 'Accurate Mass [Da]',
+    showgrid = T, 
+    zeroline = F, 
+    automargin = TRUE,
+    showticklabels = TRUE,
+    titlefont = f2, 
+    tickfont = f
+    ),
+    yaxis = list(
+      title = "Density",
+      showgrid = T,
+      showline = F,
+      zeroline = F,
+      automargin = TRUE,
+      showticklabels = TRUE,
+      titlefont = f2, 
+      tickfont = f),
+  legend = list(font=f, x = 1, y = 1)
+  )
+  
+    dens_plot_new
+	
+
+  
+  # density plot old
+
+dens_plot <- plot_ly(
+  x = ~density1$x,
+  y = ~density1$y,
+  type = 'scatter', 
+  mode = 'lines',
+  name = 'LDB-Lit', 
+  line = list(
+    width = 2,
+    color = 'rgb(68, 1, 84)')
+  )%>%
+add_trace(
+  opacity = 0.5,
+  x = ~density2$x,
+  y = ~density2$y,
+  name = 'Raw Data \n (Extracts)', 
+    line = list(
+    dash = "dash",
+    width = 2,
+    color = 'rgb(33, 144, 140)')
+  )%>%
+layout(
+      autosize = TRUE,
+    # width = 800, 
+    # height = 600,
+  xaxis = list(
+    nticks = 20,
+    range = c(0,1500),
+    title = 'Accurate Mass [Da]',
+    showgrid = T, 
+    zeroline = F, 
+    automargin = TRUE,
+    showticklabels = TRUE,
+    titlefont = f2, 
+    tickfont = f
+    ),
+    yaxis = list(
+      title = "Density",
+      showgrid = T,
+      showline = F,
+      zeroline = F,
+      automargin = TRUE,
+      showticklabels = TRUE,
+      titlefont = f2, 
+      tickfont = f),
+  legend = list(font=f, x = 1, y = 1)
+  )
+  
+
+  
+dens_plot
